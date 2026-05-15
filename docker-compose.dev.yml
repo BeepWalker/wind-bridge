@@ -1,0 +1,76 @@
+# Docker Compose - Ubuntu 开发环境
+# 用于模拟/测试 Wind Remote Client，不包含真正的 Wind 终端（必须在Windows）
+#
+# 用法:
+#   docker-compose -f docker-compose.dev.yml up -d
+#
+# 备注：本 compose 启动一个 mock server 用于开发测试，
+#        实际生产环境 Wind API Server 必须跑在 Windows 上
+
+version: "3.9"
+
+services:
+  # --- Mock Wind Server (开发测试用) ---
+  wind-mock:
+    image: python:3.11-slim
+    container_name: wind-mock-server
+    working_dir: /app
+    command: |
+      python -c "
+      from http.server import HTTPServer, BaseHTTPRequestHandler
+      import json
+
+      class MockWindHandler(BaseHTTPRequestHandler):
+          def do_GET(self):
+              if self.path == '/api/health':
+                  self._reply({'status':'ok','wind_connected': True, 'server_time':'mock', 'version':'mock'})
+              else:
+                  self._reply({'error':0,'message':'mock server'}, 404)
+
+          def do_POST(self):
+              body_len = int(self.headers.get('Content-Length', 0))
+              body = json.loads(self.rfile.read(body_len)) if body_len else {}
+              if self.path == '/api/wsd':
+                  data = [[[10.0, 11.0, 12.0]]]
+                  self._reply({'error':0, 'data':data, 'codes':body.get('codes',['MOCK.SZ']), 'fields':body.get('fields',['close']), 'times':['2024-01-01','2024-01-02','2024-01-03']})
+              elif self.path == '/api/wss':
+                  self._reply({'error':0, 'data':[[15.0]], 'codes':body.get('codes',['MOCK.SZ']), 'fields':body.get('fields',['close']), 'times':None})
+              elif self.path == '/api/wset':
+                  self._reply({'error':0, 'data':[['MOCK01.SZ','MOCK02.SZ']], 'codes':None, 'fields':None, 'times':None})
+              else:
+                  self._reply({'error':0, 'data':[], 'message':'mock'})
+
+          def _reply(self, data, code=200):
+              payload = json.dumps(data).encode()
+              self.send_response(code)
+              self.send_header('Content-Type','application/json')
+              self.send_header('Content-Length', len(payload))
+              self.end_headers()
+              self.wfile.write(payload)
+
+          def log_message(self, *args):
+              pass  # suppress logs
+
+      server = HTTPServer(('0.0.0.0', 8899), MockWindHandler)
+      print('Mock Wind Server running on :8899')
+      server.serve_forever()
+      "
+    ports:
+      - "8899:8899"
+    restart: unless-stopped
+
+  # --- Jupyter 量化研究环境 ---
+  jupyter:
+    image: jupyter/scipy-notebook:latest
+    container_name: wind-jupyter
+    ports:
+      - "8888:8888"
+    volumes:
+      - ../wind_client:/home/jovyan/wind_client
+      - ../notebooks:/home/jovyan/work
+    environment:
+      - WIND_API_URL=http://wind-mock:8899  # 开发时指向 mock
+    command: start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''
+    restart: unless-stopped
+    depends_on:
+      - wind-mock

@@ -1,0 +1,17 @@
+# Wind Bridge Server - Windows 端依赖
+# 安装方式: pip install -r requirements.txt
+
+# 核心
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+pyyaml>=6.0
+
+# WindPy (必须手动安装，不放在requirements里，因为不在PyPI上)
+# 安装方法: pip install WindPy 或使用Wind终端自带的python包
+
+# 监控（可选）
+prometheus-fastapi-instrumentator>=6.1.0
+
+# Windows 服务化（可选）
+pywin32>=306

@@ -1,0 +1,35 @@
+# Wind Bridge Server Configuration
+# 将此文件放在 wind_api_server.py 同目录下
+
+server:
+  host: "0.0.0.0"         # 监听地址，仅内网部署
+  port: 8899               # 监听端口
+  workers: 2               # uvicorn workers
+  api_key: ""              # 可选：Bearer Token 鉴权，留空则不启用鉴权
+
+wind:
+  reconnect_attempts: 5    # Wind终端断线重连次数
+  reconnect_interval: 10   # 重连间隔（秒）
+  health_check_interval: 600 # 后台健康检查间隔（秒），0 关闭
+  data_cache_seconds: 300  # 缓存秒数（0 关闭），避免重复穿透
+
+rate_limit:
+  enabled: true
+  requests_per_second: 5   # 每秒最大请求数（Wind 有频率限制）
+  burst_size: 10           # 突发容量
+
+logging:
+  level: "INFO"            # DEBUG | INFO | WARNING | ERROR
+  file: "wind_server.log"  # 日志文件路径
+  max_bytes: 10485760      # 10MB 自动轮转
+  backup_count: 5
+
+monitoring:
+  prometheus: true         # 开启 /metrics 端点
+
+# 新增配置：WebSocket 实时行情
+websocket:
+  enabled: true            # 是否启用 WebSocket 实时行情
+  max_connections: 100     # 最大并发连接数
+  ping_interval: 20        # ping 间隔（秒）
+  data_update_interval: 1    # 数据推送间隔（秒）
