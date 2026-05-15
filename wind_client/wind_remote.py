@@ -403,6 +403,120 @@ class WindRemote:
             return result
         return result.to_dataframe()
 
+    # ------------------------------------------------------------------
+    # Real-time (T+0) HTTP Methods
+    # ------------------------------------------------------------------
+
+    def wsq_snapshot(
+        self,
+        codes: Union[str, List[str]],
+        fields: Union[str, List[str]],
+        raw: bool = False,
+    ) -> Union[pd.DataFrame, WindResult]:
+        """
+        获取 Wind 实时行情快照 (wsq) — HTTP 同步查询，无需 WebSocket。
+
+        Args:
+            codes: 证券代码，如 "000001.SZ" 或 ["510050.SH", "000300.SH"]
+            fields: 实时指标，如 "rt_last,rt_vol,rt_amt,rt_pct_chg,rt_pe,rt_pe_ttm"
+            raw: True 返回 WindResult 对象
+
+        Returns:
+            DataFrame (raw=False) 或 WindResult (raw=True)
+
+        常用实时指标:
+            rt_last       最新价
+            rt_vol        成交量
+            rt_amt        成交额
+            rt_pct_chg    涨跌幅(%)
+            rt_pre_close  昨收
+            rt_open       今开
+            rt_high       最高
+            rt_low        最低
+            rt_pe         PE
+            rt_pe_ttm     PE(TTM)
+            rt_mkt_cap    总市值
+            rt_net_mf_amt 净流入
+        """
+        payload = {
+            "codes": _to_list(codes),
+            "fields": _to_list(fields),
+        }
+        result = self._post("/api/wsq", payload)
+        if raw:
+            return result
+        return result.to_dataframe()
+
+    def wse(
+        self,
+        codes: Union[str, List[str]],
+        indicators: Union[str, List[str]] = "",
+        start_time: str = "",
+        end_time: str = "",
+        options: str = "",
+        raw: bool = False,
+    ) -> Union[pd.DataFrame, WindResult]:
+        """
+        获取 Wind 板块/指数日内统计 (wse) — 实时板块资金流向、涨跌分布。
+
+        Args:
+            codes: 板块/指数代码，如 "881001.WI,000300.SH,000905.SH"
+            indicators: 统计指标，默认含涨跌幅/成交量/成交额/资金流向
+                        rt_pct_chg    涨跌幅(%)
+                        rt_vol        成交量
+                        rt_amt        成交额
+                        rt_net_mf_amt 净流入金额
+                        rt_lg_mf_amt  大单净流入
+                        rt_mid_mf_amt 中单净流入
+                        rt_sm_mf_amt  小单净流入
+                        rt_rise       上涨家数
+                        rt_fall       下跌家数
+            start_time: 起始时间，空=从开盘开始，如 "09:30:00"
+            end_time: 截止时间，空=最新，如 "15:00:00"
+            options: 附加参数
+            raw: True 返回 WindResult 对象
+        """
+        payload = {
+            "codes": _to_list(codes),
+            "indicators": _to_list(indicators) if indicators else indicators,
+            "start_time": start_time,
+            "end_time": end_time,
+            "options": options,
+        }
+        result = self._post("/api/wse", payload)
+        if raw:
+            return result
+        return result.to_dataframe()
+
+    def wupf(
+        self,
+        codes: Union[str, List[str]],
+        fields: Union[str, List[str]] = "rt_last,rt_vol,rt_amt,rt_pct_chg",
+        cycle: str = "tick",
+        options: str = "",
+        raw: bool = False,
+    ) -> Union[pd.DataFrame, WindResult]:
+        """
+        Wind 通用推送框架 (wupf) — 订阅实时推送数据流。
+
+        Args:
+            codes: 证券代码
+            fields: 指标列表
+            cycle: 推送周期 — tick, 1s, 3s, 5s, 30s, 1m, 5m
+            options: 附加参数
+            raw: True 返回 WindResult 对象
+        """
+        payload = {
+            "codes": _to_list(codes),
+            "fields": _to_list(fields),
+            "cycle": cycle,
+            "options": options,
+        }
+        result = self._post("/api/wupf", payload)
+        if raw:
+            return result
+        return result.to_dataframe()
+
     def tdays(self, begin_time: str, end_time: str) -> List[str]:
         """获取交易日列表。"""
         resp = self._session.post(
