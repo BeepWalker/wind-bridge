@@ -364,6 +364,52 @@ class WsqParams(BaseModel):
             return [f.strip() for f in v.replace("，", ",").split(",") if f.strip()]
         return v
 
+
+class WseParams(BaseModel):
+    """板块/指数日内统计 (T+0) 请求参数。"""
+
+    codes: Union[str, List[str]]
+    indicators: Union[str, List[str]] = Field(
+        default="rt_pct_chg,rt_vol,rt_amt,rt_net_mf_amt,rt_lg_mf_amt,rt_mid_mf_amt,rt_sm_mf_amt",
+        description="统计指标，默认含涨跌幅/成交量/成交额/各档资金流向",
+    )
+    start_time: str = Field(default="", description="起始时间，空=从开盘开始，如 '09:30:00'")
+    end_time: str = Field(default="", description="截止时间，空=最新，如 '15:00:00'")
+    options: str = ""
+
+    @field_validator("codes", mode="before")
+    @classmethod
+    def normalize_codes(cls, v):
+        return _validate_codes(v)
+
+    @field_validator("indicators", mode="before")
+    @classmethod
+    def normalize_indicators(cls, v):
+        if isinstance(v, str):
+            return [i.strip() for i in v.replace("，", ",").split(",") if i.strip()]
+        return v
+
+
+class WupfParams(BaseModel):
+    """Wind 通用推送框架 (wupf) 订阅请求参数。"""
+
+    codes: Union[str, List[str]]
+    fields: Union[str, List[str]] = Field(default="rt_last,rt_vol,rt_amt,rt_pct_chg")
+    cycle: str = Field(default="tick", pattern="^(tick|1s|3s|5s|30s|1m|5m)$")
+    options: str = ""
+
+    @field_validator("codes", mode="before")
+    @classmethod
+    def normalize_codes(cls, v):
+        return _validate_codes(v)
+
+    @field_validator("fields", mode="before")
+    @classmethod
+    def normalize_fields(cls, v):
+        if isinstance(v, str):
+            return [f.strip() for f in v.replace("，", ",").split(",") if f.strip()]
+        return v
+
 # ---------------------------------------------------------------------------
 # WebSocket Manager for Real-time Data
 # ---------------------------------------------------------------------------
@@ -704,6 +750,97 @@ def _build_app() -> FastAPI:
         except Exception as e:
             logger.error(f"WSI 查询异常: {e}")
             raise HTTPException(status_code=500, detail=f"Wind wsi 调用失败: {e}")
+
+    # ------------------------------------------------------------------
+    # Real-time (T+0) HTTP Endpoints
+    # ------------------------------------------------------------------
+
+    @app.post("/api/wsq")
+    async def api_wsq(params: WsqParams, _rate=Security(rate_limit), _auth=Security(verify_auth)):
+        """
+        Wind 实时行情快照 (wsq) — HTTP 一键查询，无需 WebSocket。
+
+        codes: 证券代码，如 "000001.SZ,510050.SH"
+        fields: 实时指标，如 "rt_last,rt_vol,rt_amt,rt_pct_chg,rt_pe"
+        """
+        if not wind_conn.ensure_connected():
+            raise HTTPException(status_code=503, detail="Wind 终端未连接")
+
+        logger.info(f"WSQ snapshot: codes={len(params.codes)}, fields={params.fields}")
+
+        if len(params.codes) > 500:
+            raise HTTPException(status_code=400, detail="WSQ 单次请求证券代码数量不能超过500")
+
+        try:
+            result = wind_conn.w.wsq(
+                ",".join(params.codes),
+                ",".join(params.fields),
+            )
+            return _format_wind_result(result)
+        except Exception as e:
+            logger.error(f"WSQ 查询异常: {e}")
+            raise HTTPException(status_code=500, detail=f"Wind wsq 调用失败: {e}")
+
+    @app.post("/api/wse")
+    async def api_wse(params: WseParams, _rate=Security(rate_limit), _auth=Security(verify_auth)):
+        """
+        Wind 板块/指数日内统计 (wse) — 实时板块资金流向、涨跌统计。
+
+        codes: 板块/指数代码，如 "881001.WI,000300.SH"
+        indicators: 统计指标，如 "rt_pct_chg,rt_vol,rt_amt,rt_net_mf_amt"
+        start_time: 起始时间，空=从开盘开始
+        end_time: 截止时间，空=最新
+        """
+        if not wind_conn.ensure_connected():
+            raise HTTPException(status_code=503, detail="Wind 终端未连接")
+
+        logger.info(f"WSE: codes={len(params.codes)}, indicators={params.indicators}")
+
+        if len(params.codes) > 50:
+            raise HTTPException(status_code=400, detail="WSE 单次请求板块数量不能超过50")
+
+        try:
+            result = wind_conn.w.wse(
+                ",".join(params.codes),
+                ",".join(params.indicators),
+                params.start_time,
+                params.end_time,
+                params.options,
+            )
+            return _format_wind_result(result)
+        except Exception as e:
+            logger.error(f"WSE 查询异常: {e}")
+            raise HTTPException(status_code=500, detail=f"Wind wse 调用失败: {e}")
+
+    @app.post("/api/wupf")
+    async def api_wupf(params: WupfParams, _rate=Security(rate_limit), _auth=Security(verify_auth)):
+        """
+        Wind 通用推送框架 (wupf) — 实时数据推送订阅。
+
+        codes: 证券代码
+        fields: 指标列表
+        cycle: 推送周期 — tick, 1s, 3s, 5s, 30s, 1m, 5m
+        options: 附加参数
+        """
+        if not wind_conn.ensure_connected():
+            raise HTTPException(status_code=503, detail="Wind 终端未连接")
+
+        logger.info(f"WUPF: codes={len(params.codes)}, fields={params.fields}, cycle={params.cycle}")
+
+        if len(params.codes) > 200:
+            raise HTTPException(status_code=400, detail="WUPF 单次请求证券代码数量不能超过200")
+
+        try:
+            result = wind_conn.w.wupf(
+                ",".join(params.codes),
+                ",".join(params.fields),
+                params.cycle,
+                params.options,
+            )
+            return _format_wind_result(result)
+        except Exception as e:
+            logger.error(f"WUPF 查询异常: {e}")
+            raise HTTPException(status_code=500, detail=f"Wind wupf 调用失败: {e}")
 
     @app.post("/api/tdays")
     async def api_tdays(params: dict, _rate=Security(rate_limit), _auth=Security(verify_auth)):
